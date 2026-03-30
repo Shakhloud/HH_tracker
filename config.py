@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     
     # OpenRouter AI
     OPENROUTER_API_KEY: str
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    OPENROUTER_MODEL: str = "nvidia/nemotron-3-nano-30b-a3b:free"
     
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/hh_tracker"

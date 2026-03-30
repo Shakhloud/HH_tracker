@@ -65,7 +65,12 @@ class ResumeAnalyzer:
                     if response.status != 200:
                         error_text = await response.text()
                         print(f"API error: {response.status} - {error_text}")
-                        raise Exception(f"API error: {response.status}")
+                        if response.status == 401:
+                            raise Exception("API error 401: Неверный API ключ OpenRouter. Проверьте OPENROUTER_API_KEY в .env файле.")
+                        elif response.status == 404:
+                            raise Exception(f"API error 404: Модель {self.model} не найдена. Попробуйте другую модель.")
+                        else:
+                            raise Exception(f"API error: {response.status}")
                     
                     data = await response.json()
                     content = data["choices"][0]["message"]["content"]
@@ -226,6 +231,69 @@ class ResumeAnalyzer:
                     score += 5
         
         return min(score, max_score)
+
+
+    async def generate_cover_letter(self, resume_text: str, vacancy: Dict[str, Any]) -> str:
+        """Generate short cover letter based on resume and vacancy"""
+        
+        vacancy_name = vacancy.get("name", "")
+        employer = vacancy.get("employer", {}).get("name", "")
+        snippet = vacancy.get("snippet", {})
+        requirements = snippet.get("requirement", "")
+        
+        prompt = f"""Ты - эксперт по написанию сопроводительных писем. Напиши КОРОТКОЕ сопроводительное письмо на основе резюме кандидата и вакансии.
+
+Резюме кандидата:
+---
+{resume_text[:2000]}
+---
+
+Информация о вакансии:
+- Должность: {vacancy_name}
+- Компания: {employer}
+- Требования: {requirements}
+
+Напиши сопроводительное письмо на русском языке ТОЛЬКО 2-3 предложениями:
+1. Первое предложение - приветствие и интерес к позиции
+2. Второе предложение - почему ты подходишь (1-2 ключевых навыка/опыта)
+3. Третье предложение (опционально) - призыв к действию
+
+Письмо должно звучать естественно, по-человечески, НЕ как шаблон. Максимум 50-80 слов. Без общих фраз типа "я увидел вашу вакансию на сайте"."""
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "Ты - эксперт по написанию сопроводительных писем. Пиши убедительные и профессиональные письма."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 1500
+                }
+                
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"Cover letter API error: {response.status} - {error_text}")
+                        return None
+                    
+                    data = await response.json()
+                    cover_letter = data["choices"][0]["message"]["content"]
+                    return cover_letter.strip()
+                    
+        except Exception as e:
+            print(f"Error generating cover letter: {e}")
+            return None
 
 
 resume_analyzer = ResumeAnalyzer()

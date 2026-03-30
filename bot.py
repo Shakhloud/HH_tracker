@@ -518,7 +518,8 @@ async def show_vacancy_details(callback: CallbackQuery):
             parse_mode="HTML",
             disable_web_page_preview=True,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="search_vacancies")],
+                [InlineKeyboardButton(text="📝 Сгенерировать сопроводительное письмо", callback_data=f"cover_letter_{vacancy_id}")],
+                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="show_by_date")],
                 [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_menu")]
             ])
         )
@@ -530,9 +531,75 @@ async def show_vacancy_details(callback: CallbackQuery):
     await callback.answer()
 
 
+@dp.callback_query(F.data.startswith("cover_letter_"))
+async def generate_cover_letter_handler(callback: CallbackQuery):
+    """Generate cover letter for vacancy"""
+    vacancy_id = callback.data.replace("cover_letter_", "")
+    
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user)
+        
+        if not user.resume_text:
+            await callback.answer("❌ Сначала нужно загрузить резюме!")
+            return
+        
+        # Show loading message
+        loading_msg = await callback.message.edit_text(
+            "⏳ Генерирую сопроводительное письмо...",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"vacancy_{vacancy_id}")]
+            ])
+        )
+        
+        try:
+            # Get vacancy details
+            vacancy = await hh_api.get_vacancy(vacancy_id)
+            
+            # Generate cover letter
+            cover_letter = await resume_analyzer.generate_cover_letter(user.resume_text, vacancy)
+            
+            if not cover_letter:
+                await loading_msg.edit_text(
+                    "❌ Не удалось сгенерировать письмо. Попробуйте позже.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🔙 Назад к вакансии", callback_data=f"vacancy_{vacancy_id}")]
+                    ])
+                )
+                return
+            
+            # Get vacancy URL
+            vacancy_url = vacancy.get("alternate_url", "")
+            
+            # Show cover letter with vacancy link
+            await loading_msg.edit_text(
+                f"📝 <b>Сопроводительное письмо</b>\n\n"
+                f"<pre>{cover_letter[:3500]}</pre>\n\n"
+                f"🔗 <a href='{vacancy_url}'>Ссылка на вакансию</a>\n\n"
+                f"✅ Скопируйте письмо и отправьте работодателю.",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Сгенерировать заново", callback_data=f"cover_letter_{vacancy_id}")],
+                    [InlineKeyboardButton(text="🔙 Назад к вакансии", callback_data=f"vacancy_{vacancy_id}")],
+                    [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_menu")]
+                ])
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating cover letter: {e}")
+            await loading_msg.edit_text(
+                "❌ Ошибка при генерации письма. Попробуйте позже.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад к вакансии", callback_data=f"vacancy_{vacancy_id}")]
+                ])
+            )
+    
+    await callback.answer()
+
+
 @dp.callback_query(F.data == "subscribe")
 async def process_subscribe(callback: CallbackQuery):
-    """Subscribe user to notifications"""
+    """Subscribe user to notifications - update menu"""
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user)
         
@@ -549,31 +616,64 @@ async def process_subscribe(callback: CallbackQuery):
         user.is_subscribed = True
         await session.commit()
         
+        # Parse skills from JSON string
+        import json
+        try:
+            skills = json.loads(user.skills.replace("'", '"')) if user.skills else []
+            skills_str = ", ".join(skills[:5]) if skills else "Не указаны"
+        except:
+            skills_str = "Не указаны"
+        
+        # Update message text and keyboard with new subscription status
         await callback.message.edit_text(
-            f"✅ Ты подписался на рассылку вакансий!\n\n"
-            f"🔔 Каждые {settings.CHECK_INTERVAL_MINUTES} минут я буду проверять новые вакансии "
-            f"и отправлять уведомления, если найду что-то подходящее.",
+            f"🏠 Главное меню\n\n"
+            f"📊 <b>Данные из резюме:</b>\n"
+            f"💼 Желаемая позиция: {user.desired_position or 'Не указана'}\n"
+            f"📍 Локация: {user.location or 'Не указана'}\n"
+            f"💰 Ожидаемая зарплата: {user.salary_expectation or 'Не указана'}\n"
+            f"📈 Опыт работы: {user.experience_years or 'Не указан'} лет\n"
+            f"🛠 Ключевые навыки: {skills_str}\n\n"
+            f"🔔 Рассылка: {'✅ Активна' if user.is_subscribed else '❌ Не активна'}\n\n"
+            f"Выбери действие:",
+            parse_mode="HTML",
             reply_markup=get_main_keyboard(True)
         )
     
-    await callback.answer()
+    await callback.answer("✅ Подписка активирована")
 
 
 @dp.callback_query(F.data == "unsubscribe")
 async def process_unsubscribe(callback: CallbackQuery):
-    """Unsubscribe user from notifications"""
+    """Unsubscribe user from notifications - update menu"""
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user)
         user.is_subscribed = False
         await session.commit()
         
+        # Parse skills from JSON string
+        import json
+        try:
+            skills = json.loads(user.skills.replace("'", '"')) if user.skills else []
+            skills_str = ", ".join(skills[:5]) if skills else "Не указаны"
+        except:
+            skills_str = "Не указаны"
+        
+        # Update message text and keyboard with new subscription status
         await callback.message.edit_text(
-            "🔕 Ты отписался от рассылки вакансий.\n\n"
-            "Ты можешь подписаться снова в любое время.",
+            f"🏠 Главное меню\n\n"
+            f"📊 <b>Данные из резюме:</b>\n"
+            f"💼 Желаемая позиция: {user.desired_position or 'Не указана'}\n"
+            f"📍 Локация: {user.location or 'Не указана'}\n"
+            f"💰 Ожидаемая зарплата: {user.salary_expectation or 'Не указана'}\n"
+            f"📈 Опыт работы: {user.experience_years or 'Не указан'} лет\n"
+            f"🛠 Ключевые навыки: {skills_str}\n\n"
+            f"🔔 Рассылка: {'✅ Активна' if user.is_subscribed else '❌ Не активна'}\n\n"
+            f"Выбери действие:",
+            parse_mode="HTML",
             reply_markup=get_main_keyboard(False)
         )
     
-    await callback.answer()
+    await callback.answer("🔕 Подписка отключена")
 
 
 @dp.callback_query(F.data == "back_to_menu")
