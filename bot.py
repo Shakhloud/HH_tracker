@@ -793,15 +793,26 @@ async def show_new_vacancies_from_notification(callback: CallbackQuery):
         await callback.answer()
         return
     
-    # Prepare vacancies list for keyboard
-    vac_list = [(vac, str(vac.get("id")), score) for vac, score in vacancies]
-    
-    await callback.message.edit_text(
-        f"📋 <b>Новые вакансии ({len(vacancies)}):</b>\n\n"
-        f"Нажми на название для деталей:",
-        parse_mode="HTML",
-        reply_markup=get_vacancies_keyboard(vac_list)
-    )
+    # Store vacancies in user_vacancy_pages for navigation
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user)
+        
+        # Prepare vacancies list for keyboard
+        vac_list = [(vac, str(vac.get("id")), score) for vac, score in vacancies]
+        
+        # Store for pagination
+        user_vacancy_pages[user.id] = {
+            'vacancies': vac_list,
+            'page': 0,
+            'sort_by': 'date'
+        }
+        
+        await callback.message.edit_text(
+            f"📋 <b>Новые вакансии ({len(vacancies)}):</b>\n\n"
+            f"Нажми на название для деталей:",
+            parse_mode="HTML",
+            reply_markup=get_vacancies_keyboard(vac_list)
+        )
     
     await callback.answer()
 
