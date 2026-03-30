@@ -555,8 +555,15 @@ async def generate_cover_letter_handler(callback: CallbackQuery):
             # Get vacancy details
             vacancy = await hh_api.get_vacancy(vacancy_id)
             
+            logger.info(f"Generating cover letter for vacancy {vacancy_id}, user {user.id}")
+            logger.info(f"Resume text length: {len(user.resume_text) if user.resume_text else 0}")
+            
             # Generate cover letter
             cover_letter = await resume_analyzer.generate_cover_letter(user.resume_text, vacancy)
+            
+            logger.info(f"Cover letter result: {'SUCCESS' if cover_letter else 'FAILED'}")
+            if cover_letter:
+                logger.info(f"Cover letter length: {len(cover_letter)}")
             
             if not cover_letter:
                 await loading_msg.edit_text(

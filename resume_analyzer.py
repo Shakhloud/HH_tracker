@@ -282,17 +282,27 @@ class ResumeAnalyzer:
                     headers=headers,
                     json=payload
                 ) as response:
+                    print(f"Cover letter API response status: {response.status}")
                     if response.status != 200:
                         error_text = await response.text()
                         print(f"Cover letter API error: {response.status} - {error_text}")
                         return None
                     
                     data = await response.json()
+                    print(f"Cover letter API data received: {list(data.keys())}")
+                    
+                    if "choices" not in data or not data["choices"]:
+                        print(f"Cover letter API no choices in response: {data}")
+                        return None
+                    
                     cover_letter = data["choices"][0]["message"]["content"]
+                    print(f"Cover letter generated, length: {len(cover_letter)}")
                     return cover_letter.strip()
                     
         except Exception as e:
             print(f"Error generating cover letter: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 
