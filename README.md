@@ -259,4 +259,4 @@ MIT License
 
 ## Автор
 
-Created for job seekers who want to automate their job search on hh.ru
+Шахмоведев М.А.
