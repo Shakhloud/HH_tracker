@@ -293,11 +293,11 @@ class ResumeAnalyzer:
                     
                     if "choices" not in data or not data["choices"]:
                         print(f"Cover letter API no choices in response: {data}")
-                        return None
+                        return "Не удалось сгенерировать письмо. Попробуйте позже."
                     
                     cover_letter = data["choices"][0]["message"]["content"]
                     print(f"Cover letter generated, length: {len(cover_letter)}")
-                    return cover_letter.strip()
+                    return cover_letter.strip() if cover_letter else "Не удалось сгенерировать письмо."
                     
         except Exception as e:
             print(f"Error generating cover letter: {e}")

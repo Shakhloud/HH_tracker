@@ -519,7 +519,7 @@ async def show_vacancy_details(callback: CallbackQuery):
             disable_web_page_preview=True,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📝 Сгенерировать сопроводительное письмо", callback_data=f"cover_letter_{vacancy_id}")],
-                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="show_by_date")],
+                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_vacancies")],
                 [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_menu")]
             ])
         )
@@ -527,6 +527,35 @@ async def show_vacancy_details(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Error showing vacancy: {e}")
         await callback.answer("❌ Ошибка загрузки вакансии")
+    
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back_to_vacancies")
+async def back_to_vacancies_list(callback: CallbackQuery):
+    """Return to vacancies list"""
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user)
+        
+        # Check if we have stored vacancies
+        if user.id not in user_vacancy_pages or not user_vacancy_pages[user.id].get('vacancies'):
+            await callback.message.edit_text(
+                "❌ Список вакансий устарел. Выполните поиск заново.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔍 Найти вакансии", callback_data="search_vacancies")],
+                    [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_menu")]
+                ])
+            )
+            await callback.answer()
+            return
+        
+        # Get current page and sort
+        data = user_vacancy_pages[user.id]
+        page = data.get('page', 0)
+        sort_by = data.get('sort_by', 'date')
+        
+        # Show vacancies page
+        await show_vacancies_page(callback.message, user.id, page, sort_by)
     
     await callback.answer()
 
@@ -587,7 +616,7 @@ async def generate_cover_letter_handler(callback: CallbackQuery):
                 disable_web_page_preview=True,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔄 Сгенерировать заново", callback_data=f"cover_letter_{vacancy_id}")],
-                    [InlineKeyboardButton(text="🔙 Назад к вакансии", callback_data=f"vacancy_{vacancy_id}")],
+                    [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_vacancies")],
                     [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_menu")]
                 ])
             )
